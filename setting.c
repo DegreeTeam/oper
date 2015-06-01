@@ -65,6 +65,7 @@ int main(void) {
 		fprintf(fp, "sudo hciconfig hci0 down\n");
 		fprintf(fp, "sudo hciconfig hci0 up\n");
 		fprintf(fp, "sudo hciconfig hci0 name %s\n", name);
+		fprintf(fp, "sudo hciconfig hci0 noscan\n");
 		fprintf(fp, "sudo hciconfig hci0 leadv 3\n");
 
 		fprintf(fp, "%s", ble1);
