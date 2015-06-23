@@ -63,9 +63,13 @@ void* do_echo(void* index){
         }	
 	
 	struct timeval tv;
-	tv.tv_sec = 2;
+	tv.tv_sec = 5;
 	tv.tv_usec = 0;
 	if (setsockopt(s_socket, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
+	    perror("Error");
+	}
+	int snd_buf = SIZE*2;
+	if (setsockopt(s_socket, SOL_SOCKET, SO_RCVBUF,&snd_buf,sizeof(snd_buf)) < 0) {
 	    perror("Error");
 	}
 	while(1)
@@ -80,6 +84,7 @@ void* do_echo(void* index){
 	portP[setting->num] = 0;
 	user_num--;
 	close(s_socket);
+	delete(setting);
 	return 0;
 }
 int main(){
@@ -106,7 +111,12 @@ int main(){
                 printf("listen Fail\n");
                 return -1; 
         }
-	
+
+	buffer = (unsigned char *) malloc(SIZE);
+	for(int i=0; i<SIZE; i++){
+		buffer[i] = 0;
+	}
+
     	if(pthread_create(&pthread2 , NULL , data_streaming , (void*) NULL) < 0)
 	{
            perror("could not create thread");
@@ -126,9 +136,11 @@ int main(){
 			user_num++;
 			printf("user number = %d\n", user_num);
 			UdpStatus* setting = new UdpStatus;
+
 			setting->num = num;
 			setting->addr = c_addr;
 			thr_id = pthread_create(&pthread1, NULL, do_echo, (void*) setting);
+			printf("thr id = %d\n", thr_id);
 		}
 		else{
 			printf("There are no available port!\n");
@@ -146,14 +158,9 @@ void *data_streaming(void *socket_desc)
 	int dir;
 	snd_pcm_uframes_t frames;
 	int i;
-	buffer = (unsigned char *) malloc(SIZE);
-	for(int i=0; i<SIZE; i++){
-		buffer[i] = 0;
-	}
-
 
 	/* Open PCM device for recording (capture). */
-	rc = snd_pcm_open(&handle, "hw:1,0",SND_PCM_STREAM_CAPTURE, 0);
+	rc = snd_pcm_open(&handle, "plughw:1,0",SND_PCM_STREAM_CAPTURE, 0);
 	if (rc < 0) {
 		fprintf(stderr,"unable to open pcm device: %s\n",
 		snd_strerror(rc));
@@ -214,10 +221,9 @@ void *data_streaming(void *socket_desc)
 		//	fprintf(stderr, "short read, read %d frames\n", rc);
 		}
 	}
-
+	free(buffer);
 	snd_pcm_drain(handle);
 	snd_pcm_close(handle);
-	free(buffer);
 
 	return 0;
 }
