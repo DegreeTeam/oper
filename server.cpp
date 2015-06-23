@@ -13,7 +13,7 @@
 #include <time.h>
 
 #define ALSA_PCM_NEW_HW_PARAMS_API
-#define SIZE 1024 
+#define SIZE 2048
 #define PORT 9000
 
 #define PORTSIZE 50
@@ -72,12 +72,16 @@ void* do_echo(void* index){
 	if (setsockopt(s_socket, SOL_SOCKET, SO_RCVBUF,&snd_buf,sizeof(snd_buf)) < 0) {
 	    perror("Error");
 	}
+	len = sizeof(c_addr);
 	while(1)
 	{
-		len = sizeof(c_addr);
 		if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
 			_write("recvfrom error\n");
-			break;
+			portP[setting->num] = 0;
+			user_num--;
+			close(s_socket);
+			delete(setting);
+			return 0;
 		}
 		while( (sendto(s_socket, (void *)buffer, SIZE, 0, (struct sockaddr *)&c_addr, len)) <0 );
 	}
@@ -187,7 +191,7 @@ void *data_streaming(void *socket_desc)
 	snd_pcm_hw_params_set_channels(handle, params, 1);
 
 	/* 44100 bits/second sampling rate (CD quality) */
-	val = 44100;
+	val = 40960;
 	snd_pcm_hw_params_set_rate_near(handle, params,&val, &dir);
 
 	/* Set period size to 32 frames. */
