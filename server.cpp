@@ -15,6 +15,7 @@
 #define ALSA_PCM_NEW_HW_PARAMS_API
 #define SIZE 2048
 #define PORT 9000
+#define SERVERADDR "192.168.42.1"
 
 #define PORTSIZE 50
 void *data_streaming(void *socket_desc);
@@ -54,7 +55,7 @@ void* do_echo(void* index){
 	s_socket = socket(PF_INET, SOCK_DGRAM, 0);
 	
 	memset(&s_addr, 0, sizeof(s_addr));
-        s_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+        s_addr.sin_addr.s_addr = htonl(SERVERADDR);
         s_addr.sin_family = AF_INET;
         s_addr.sin_port = htons(port[setting->num]);
 	if(bind(s_socket, (struct sockaddr *) &s_addr, sizeof(s_addr)) == -1){
@@ -73,12 +74,17 @@ void* do_echo(void* index){
 	    perror("Error");
 	}
 	len = sizeof(c_addr);
+
+	if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
+		_write("recvfrom error\n");
+		portP[setting->num] = 0;
+		user_num--;
+		delete(setting);
+		close(s_socket);
+		return 0;
+	}
 	while(1)
 	{
-		if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
-			_write("recvfrom error\n");
-			break;
-		}
 		while( (sendto(s_socket, (void *)buffer, SIZE, 0, (struct sockaddr *)&c_addr, len)) <0 );
 	}
 	portP[setting->num] = 0;
@@ -98,7 +104,7 @@ int main(){
 	s_socket = socket(PF_INET, SOCK_STREAM, 0); 
 
         memset(&s_addr, 0, sizeof(s_addr));
-        s_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+        s_addr.sin_addr.s_addr = htonl(SERVERADDR);
         s_addr.sin_family = AF_INET;
         s_addr.sin_port = htons(PORT);
 	
