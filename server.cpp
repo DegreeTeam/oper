@@ -77,18 +77,14 @@ void* do_echo(void* index){
 	{
 		if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
 			_write("recvfrom error\n");
-			portP[setting->num] = 0;
-			user_num--;
-			close(s_socket);
-			delete(setting);
-			return 0;
+			break;
 		}
 		while( (sendto(s_socket, (void *)buffer, SIZE, 0, (struct sockaddr *)&c_addr, len)) <0 );
 	}
 	portP[setting->num] = 0;
 	user_num--;
-	close(s_socket);
 	delete(setting);
+	close(s_socket);
 	return 0;
 }
 int main(){
@@ -105,7 +101,12 @@ int main(){
         s_addr.sin_addr.s_addr = htonl(INADDR_ANY);
         s_addr.sin_family = AF_INET;
         s_addr.sin_port = htons(PORT);
-
+	
+	int optval = 1;
+	int optlen = sizeof(int);
+	if(setsockopt(s_socket, SOL_SOCKET, SO_REUSEADDR, (char*)&optval, optlen)<0){
+                printf("reuse option fail\n");
+	}
         if(bind(s_socket, (struct sockaddr *) &s_addr, sizeof(s_addr)) == -1){
                 printf("Can not Bind\n");
                 return -1; 
