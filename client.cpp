@@ -49,25 +49,21 @@ int main(){
 	char buff[512] = {0,};
 	
 	struct timeval tv;
-	tv.tv_sec = 2;
+	tv.tv_sec = 4;
 	tv.tv_usec = 0;
 	if (setsockopt(c_socket, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
 	    perror("Error");
 	}
 	
 	sleep(1);
+	len = sizeof(c_addr);
+	while( (sendto(c_socket, (void *)&ack, sizeof(ack), 0,(struct sockaddr*)&c_addr , len)) <0 ); 
+		
 	while(1){
-		len = sizeof(c_addr);
-		while( (sendto(c_socket, (void *)&ack, sizeof(ack), 0,(struct sockaddr*)&c_addr , len)) <0 ); 
 		if( (recvfrom(c_socket, (void *)buff, sizeof(buff), 0, NULL, NULL)) <0 ){
 			printf("receive error\n");
 			break;
 		}
-		printf("port number = %d\n",udp_port);
-		for(int i=0;i<512;i++){ 
-			printf("%d ", buff[i]);
-		}
-		printf("\n\n\n");
 	}
 	close(c_socket);
 	return 0;
