@@ -15,7 +15,7 @@
 #define ALSA_PCM_NEW_HW_PARAMS_API
 #define SIZE 2048
 #define PORT 9000
-#define SERVERADDR "127.0.0.1"
+#define SERVERADDR "192.168.42.1"
 
 #define PORTSIZE 50
 void *data_streaming(void *socket_desc);
@@ -85,13 +85,7 @@ void* do_echo(void* index){
 	}
 	while(1)
 	{
-		for(int i = 0 ; i<100;i++){
-			while( (sendto(s_socket, (void *)buffer, SIZE, 0, (struct sockaddr *)&c_addr, len)) <0 );
-		}
-		if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
-			_write("recvfrom error\n");
-			break;
-		}
+		while( (sendto(s_socket, (void *)buffer, SIZE, 0, (struct sockaddr *)&c_addr, len)) <0 );
 	}
 	portP[setting->num] = 0;
 	user_num--;
@@ -143,7 +137,7 @@ int main(){
 	while(1){
 		int num;
 		if ((num = availablePort()) != -1){
-			printf("Port is available!\n");
+			fprintf(stderr, "Port is available!\n");
 			portP[num] = 1;
 			len = sizeof(c_addr);
 			c_socket = accept(s_socket, (struct sockaddr *) &c_addr, (socklen_t*)&len);
@@ -151,13 +145,12 @@ int main(){
 			close(c_socket);
 			
 			user_num++;
-			printf("user number = %d\n", user_num);
+			fprintf(stderr, "user number = %d\n", user_num);
 			UdpStatus* setting = new UdpStatus;
 
 			setting->num = num;
 			setting->addr = c_addr;
 			thr_id = pthread_create(&pthread1, NULL, do_echo, (void*) setting);
-			printf("thr id = %d\n", thr_id);
 		}
 		else{
 			printf("There are no available port!\n");
