@@ -18,7 +18,7 @@ int main(){
         c_socket = socket(PF_INET, SOCK_STREAM, 0); 
 
         memset(&c_addr, 0, sizeof(c_addr));
-        c_addr.sin_addr.s_addr = inet_addr(PIADDR);
+        c_addr.sin_addr.s_addr = inet_addr(IPADDR);
         c_addr.sin_family = AF_INET;
         c_addr.sin_port = htons(PORT);
 
@@ -42,7 +42,7 @@ int main(){
 
 	bzero(&c_addr, sizeof(c_addr));
 	c_addr.sin_family = AF_INET;
-	c_addr.sin_addr.s_addr = inet_addr(PIADDR);
+	c_addr.sin_addr.s_addr = inet_addr(IPADDR);
 	c_addr.sin_port = htons(udp_port);
 
 	int ack = 1;
@@ -57,9 +57,10 @@ int main(){
 	
 	sleep(1);
 	len = sizeof(c_addr);
-	while( (sendto(c_socket, (void *)&ack, sizeof(ack), 0,(struct sockaddr*)&c_addr , len)) <0 ); 
 		
 	while(1){
+		
+		while( (sendto(c_socket, (void *)&ack, sizeof(ack), 0,(struct sockaddr*)&c_addr , len)) <0 ); 
 		if( (recvfrom(c_socket, (void *)buff, sizeof(buff), 0, NULL, NULL)) <0 ){
 			printf("receive error\n");
 			break;

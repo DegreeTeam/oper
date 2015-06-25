@@ -15,7 +15,7 @@
 #define ALSA_PCM_NEW_HW_PARAMS_API
 #define SIZE 2048
 #define PORT 9000
-#define SERVERADDR "192.168.42.1"
+#define SERVERADDR "127.0.0.1"
 
 #define PORTSIZE 50
 void *data_streaming(void *socket_desc);
@@ -66,25 +66,23 @@ void* do_echo(void* index){
 	struct timeval tv;
 	tv.tv_sec = 5;
 	tv.tv_usec = 0;
-	if (setsockopt(s_socket, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
-	    perror("Error");
-	}
+//	if (setsockopt(s_socket, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
+//	    perror("Error");
+//	}
 	int snd_buf = SIZE*2;
 	if (setsockopt(s_socket, SOL_SOCKET, SO_RCVBUF,&snd_buf,sizeof(snd_buf)) < 0) {
 	    perror("Error");
 	}
+	c_addr = setting->addr;
 	len = sizeof(c_addr);
 
-	if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
-		_write("recvfrom error\n");
-		portP[setting->num] = 0;
-		user_num--;
-		delete(setting);
-		close(s_socket);
-		return 0;
-	}
+	
 	while(1)
 	{
+		if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
+			_write("recvfrom error\n");
+			break;
+		}
 		while( (sendto(s_socket, (void *)buffer, SIZE, 0, (struct sockaddr *)&c_addr, len)) <0 );
 	}
 	portP[setting->num] = 0;
@@ -134,6 +132,13 @@ int main(){
             return 1;
         }
 	
+	UdpStatus* setting = new UdpStatus;
+	setting->num = 0;
+	thr_id = pthread_create(&pthread1, NULL, do_echo, (void*) setting);
+	thr_id = pthread_create(&pthread1, NULL, do_echo, (void*) setting);
+	thr_id = pthread_create(&pthread1, NULL, do_echo, (void*) setting);
+	thr_id = pthread_create(&pthread1, NULL, do_echo, (void*) setting);
+	thr_id = pthread_create(&pthread1, NULL, do_echo, (void*) setting);
 	while(1){
 		int num;
 		if ((num = availablePort()) != -1){
@@ -141,16 +146,11 @@ int main(){
 			portP[num] = 1;
 			len = sizeof(c_addr);
 			c_socket = accept(s_socket, (struct sockaddr *) &c_addr, (socklen_t*)&len);
-			write(c_socket, &port[num], sizeof(port[num]));
+			write(c_socket, &port[0], sizeof(port[num]));
 			close(c_socket);
 			
 			user_num++;
 			fprintf(stderr, "user number = %d\n", user_num);
-			UdpStatus* setting = new UdpStatus;
-
-			setting->num = num;
-			setting->addr = c_addr;
-			thr_id = pthread_create(&pthread1, NULL, do_echo, (void*) setting);
 		}
 		else{
 			printf("There are no available port!\n");
