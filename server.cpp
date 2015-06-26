@@ -13,11 +13,17 @@
 #include <time.h>
 
 #define ALSA_PCM_NEW_HW_PARAMS_API
-#define SIZE 2048
+#define SIZE 32
 #define PORT 9000
-#define SERVERADDR "192.168.42.1"
+#define SERVERADDR "127.0.0.1"
 
 #define PORTSIZE 50
+#define LOCK 1
+#define COMMU 1
+pthread_mutex_t mutex_lock   = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t   thread_cond  = PTHREAD_COND_INITIALIZER;
+
+
 void *data_streaming(void *socket_desc);
 unsigned char* buffer;
 
@@ -74,7 +80,7 @@ void* do_echo(void* index){
 	    perror("Error");
 	}
 	len = sizeof(c_addr);
-
+#if !(COMMU)
 	if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
 		_write("recvfrom error\n");
 		portP[setting->num] = 0;
@@ -83,9 +89,24 @@ void* do_echo(void* index){
 		close(s_socket);
 		return 0;
 	}
+#endif
 	while(1)
 	{
+#if COMMU
+		if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
+			_write("recvfrom error\n");
+			break;
+		}	
+#endif
+#if LOCK
+//		pthread_mutex_lock(&mutex_lock);
+	        pthread_cond_wait(&thread_cond, &mutex_lock);
+#endif
 		while( (sendto(s_socket, (void *)buffer, SIZE, 0, (struct sockaddr *)&c_addr, len)) <0 );
+#if LOCK
+//		pthread_mutex_unlock(&mutex_lock);
+#endif
+
 	}
 	portP[setting->num] = 0;
 	user_num--;
@@ -99,6 +120,7 @@ int main(){
 	int len;
 	pthread_t pthread1, pthread2;
 	int thr_id;
+	int status;
 
 	setPort();	
 	s_socket = socket(PF_INET, SOCK_STREAM, 0); 
@@ -133,7 +155,7 @@ int main(){
            perror("could not create thread");
             return 1;
         }
-	
+    
 	while(1){
 		int num;
 		if ((num = availablePort()) != -1){
@@ -151,11 +173,13 @@ int main(){
 			setting->num = num;
 			setting->addr = c_addr;
 			thr_id = pthread_create(&pthread1, NULL, do_echo, (void*) setting);
+			pthread_detach(pthread1);
 		}
 		else{
 			printf("There are no available port!\n");
 		}
 	}
+	pthread_join(pthread2, (void **) status);
 	close(s_socket);
 	return 0;
 }
@@ -197,7 +221,7 @@ void *data_streaming(void *socket_desc)
 	snd_pcm_hw_params_set_channels(handle, params, 1);
 
 	/* 44100 bits/second sampling rate (CD quality) */
-	val = 40960;
+	val = 4000;
 	snd_pcm_hw_params_set_rate_near(handle, params,&val, &dir);
 
 	/* Set period size to 32 frames. */
@@ -220,16 +244,23 @@ void *data_streaming(void *socket_desc)
 	snd_pcm_hw_params_get_period_time(params,&val, &dir);
 
 	while (1) {
+#if LOCK
+//		pthread_mutex_lock(&mutex_lock);
+#endif
 		rc = snd_pcm_readi(handle, buffer, SIZE);
-		if (rc == -EPIPE) {
-		/* EPIPE means overrun */
-			fprintf(stderr, "overrun occurred\n");
-			snd_pcm_prepare(handle);
-		} else if (rc < 0) {
-		//	fprintf(stderr,"error from read: %s\n",snd_strerror(rc));
-		} else if (rc != (int)frames) {
-		//	fprintf(stderr, "short read, read %d frames\n", rc);
-		}
+#if LOCK
+        	pthread_cond_broadcast(&thread_cond);
+//	        pthread_mutex_unlock(&mutex_lock);
+#endif
+//		if (rc == -EPIPE) {
+//		/* EPIPE means overrun */
+//			fprintf(stderr, "overrun occurred\n");
+//			snd_pcm_prepare(handle);
+//		} else if (rc < 0) {
+//		//	fprintf(stderr,"error from read: %s\n",snd_strerror(rc));
+//		} else if (rc != (int)frames) {
+//		//	fprintf(stderr, "short read, read %d frames\n", rc);
+//		}
 	}
 	free(buffer);
 	snd_pcm_drain(handle);
