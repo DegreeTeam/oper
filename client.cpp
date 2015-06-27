@@ -19,7 +19,7 @@ int main(){
         c_socket = socket(PF_INET, SOCK_STREAM, 0); 
 
         memset(&c_addr, 0, sizeof(c_addr));
-        c_addr.sin_addr.s_addr = inet_addr(IPADDR);
+        c_addr.sin_addr.s_addr = inet_addr(PIADDR);
         c_addr.sin_family = AF_INET;
         c_addr.sin_port = htons(PORT);
 
@@ -43,7 +43,7 @@ int main(){
 
 	bzero(&c_addr, sizeof(c_addr));
 	c_addr.sin_family = AF_INET;
-	c_addr.sin_addr.s_addr = inet_addr(IPADDR);
+	c_addr.sin_addr.s_addr = inet_addr(PIADDR);
 	c_addr.sin_port = htons(udp_port);
 
 	int ack = 1;
