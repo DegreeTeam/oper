@@ -13,7 +13,7 @@
 #include <time.h>
 
 #define ALSA_PCM_NEW_HW_PARAMS_API
-#define SIZE 1024
+#define SIZE 2048
 #define PORT 9000
 #define SERVERADDR "192.168.42.1"
 
@@ -50,7 +50,6 @@ int _write(char* str){
 typedef struct _UdpStatus{
 	int num;	
 	struct sockaddr_in addr;
-	int tcp_socket;
 } UdpStatus;
 void* do_echo(void* index){
 	int s_socket;
@@ -71,7 +70,7 @@ void* do_echo(void* index){
         }	
 	
 	struct timeval tv;
-	tv.tv_sec = 3;
+	tv.tv_sec = 100;
 	tv.tv_usec = 0;
 	if (setsockopt(s_socket, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
 	    perror("Error");
@@ -89,27 +88,14 @@ void* do_echo(void* index){
 		portP[setting->num] = 0;
 		user_num--;
 		delete(setting);
-		close(setting->tcp_socket);
 		close(s_socket);
 		return 0;
 	}
 	_write("connected\n");
 #endif
-
-	fd_set fds;
-	int state, val;
+	int count = 0;
 	while(1)
 	{
-		FD_ZERO(&fds);
-		FD_SET(setting->tcp_socket, &fds);
-		state = select(setting->tcp_socket +1, &fds, NULL, NULL, NULL);
-		if(FD_ISSET(setting->tcp_socket, &fds)){
-			if(read(setting->tcp_socket, &val, sizeof(val)) <= 0){
-				_write("client close\n");
-				break;
-			}	
-		}
-	
 #if COMMU
 		if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
 			_write("recvfrom error\n");
@@ -121,15 +107,14 @@ void* do_echo(void* index){
 	        pthread_cond_wait(&thread_cond, &mutex_lock);
 #endif
 		while( (sendto(s_socket, (void *)buffer, SIZE, 0, (struct sockaddr *)&c_addr, len)) <0 );
-
-//		count++;
-//		if(count==100){
-//			if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
-//				_write("recvfrom error\n");
-//				break;
-//			}	
-//			count = 0;
-//		}
+		count++;
+		if(count==100){
+			if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
+				_write("recvfrom error\n");
+				break;
+			}	
+			count = 0;
+		}
 #if LOCK
 //		pthread_mutex_unlock(&mutex_lock);
 #endif
@@ -138,7 +123,6 @@ void* do_echo(void* index){
 	portP[setting->num] = 0;
 	user_num--;
 	delete(setting);
-	close(setting->tcp_socket);
 	close(s_socket);
 	return 0;
 }
@@ -192,6 +176,7 @@ int main(){
 			len = sizeof(c_addr);
 			c_socket = accept(s_socket, (struct sockaddr *) &c_addr, (socklen_t*)&len);
 			write(c_socket, &port[num], sizeof(port[num]));
+			close(c_socket);
 			
 			user_num++;
 			fprintf(stderr, "user number = %d\n", user_num);
@@ -199,7 +184,6 @@ int main(){
 
 			setting->num = num;
 			setting->addr = c_addr;
-			setting->tcp_socket = c_socket;
 			thr_id = pthread_create(&pthread1, NULL, do_echo, (void*) setting);
 			pthread_detach(pthread1);
 		}
@@ -280,15 +264,15 @@ void *data_streaming(void *socket_desc)
         	pthread_cond_broadcast(&thread_cond);
 //	        pthread_mutex_unlock(&mutex_lock);
 #endif
-		if (rc == -EPIPE) {
-		/* EPIPE means overrun */
-			fprintf(stderr, "overrun occurred\n");
-			snd_pcm_prepare(handle);
-		} else if (rc < 0) {
-			fprintf(stderr,"error from read: %s\n",snd_strerror(rc));
-		} else if (rc != (int)frames) {
-			fprintf(stderr, "short read, read %d frames\n", rc);
-		}
+//		if (rc == -EPIPE) {
+//		/* EPIPE means overrun */
+//			fprintf(stderr, "overrun occurred\n");
+//			snd_pcm_prepare(handle);
+//		} else if (rc < 0) {
+//		//	fprintf(stderr,"error from read: %s\n",snd_strerror(rc));
+//		} else if (rc != (int)frames) {
+//		//	fprintf(stderr, "short read, read %d frames\n", rc);
+//		}
 	}
 	free(buffer);
 	snd_pcm_drain(handle);
