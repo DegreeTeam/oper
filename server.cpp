@@ -107,14 +107,14 @@ void* do_echo(void* index){
 	        pthread_cond_wait(&thread_cond, &mutex_lock);
 #endif
 		while( (sendto(s_socket, (void *)buffer, SIZE, 0, (struct sockaddr *)&c_addr, len)) <0 );
-		count++;
-		if(count==100){
-			if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
-				_write("recvfrom error\n");
-				break;
-			}	
-			count = 0;
-		}
+//		count++;
+//		if(count==100){
+//			if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
+//				_write("recvfrom error\n");
+//				break;
+//			}	
+//			count = 0;
+//		}
 #if LOCK
 //		pthread_mutex_unlock(&mutex_lock);
 #endif
