@@ -13,7 +13,7 @@
 #include <time.h>
 
 #define ALSA_PCM_NEW_HW_PARAMS_API
-#define SIZE 1024
+#define SIZE 512
 #define PORT 9000
 #define SERVERADDR "192.168.42.1"
 
@@ -70,12 +70,11 @@ void* do_echo(void* index){
                 return 0; 
         }	
 	
-	struct timeval tv;
-	tv.tv_sec = 3;
-	tv.tv_usec = 0;
-	if (setsockopt(s_socket, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
-	    perror("Error");
-	}
+	struct timespec tv = {0,};
+	tv.tv_nsec = 1;
+//	if (setsockopt(s_socket, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
+//	    perror("Error");
+//	}
 	int snd_buf = SIZE*2;
 	if (setsockopt(s_socket, SOL_SOCKET, SO_RCVBUF,&snd_buf,sizeof(snd_buf)) < 0) {
 	    perror("Error");
@@ -102,7 +101,7 @@ void* do_echo(void* index){
 	{
 		FD_ZERO(&fds);
 		FD_SET(setting->tcp_socket, &fds);
-		state = select(setting->tcp_socket +1, &fds, NULL, NULL, NULL);
+		state = pselect(setting->tcp_socket +1, &fds, NULL, NULL, &tv, NULL);
 		if(FD_ISSET(setting->tcp_socket, &fds)){
 			if(read(setting->tcp_socket, &val, sizeof(val)) <= 0){
 				_write("client close\n");
