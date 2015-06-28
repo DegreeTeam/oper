@@ -11,6 +11,8 @@
 #include <errno.h>
 #include <alsa/asoundlib.h>
 #include <time.h>
+#include <sys/epoll.h>
+
 
 #define ALSA_PCM_NEW_HW_PARAMS_API
 #define SIZE 1024
@@ -18,7 +20,7 @@
 #define SERVERADDR "192.168.42.1"
 
 #define PORTSIZE 50
-#define LOCK 1
+#define LOCK 0 
 #define COMMU 0 
 pthread_mutex_t mutex_lock   = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t   thread_cond  = PTHREAD_COND_INITIALIZER;
@@ -70,12 +72,12 @@ void* do_echo(void* index){
                 return 0; 
         }	
 	
-	struct timeval tv;
-	tv.tv_sec = 3;
-	tv.tv_usec = 0;
-	if (setsockopt(s_socket, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
-	    perror("Error");
-	}
+//	struct timeval tv;
+//	tv.tv_sec = 3;
+//	tv.tv_usec = 0;
+//	if (setsockopt(s_socket, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
+//	    perror("Error");
+//	}
 	int snd_buf = SIZE*2;
 	if (setsockopt(s_socket, SOL_SOCKET, SO_RCVBUF,&snd_buf,sizeof(snd_buf)) < 0) {
 	    perror("Error");
@@ -95,21 +97,18 @@ void* do_echo(void* index){
 	}
 	_write("connected\n");
 #endif
+	struct epoll_event* events = new struct epoll_event;
+	struct epoll_event ev;
 
-	fd_set fds;
-	int state, val;
+	int ret_poll, epollfd;
+	epollfd = epoll_create(1);
+	ev.events = EPOLLIN|EPOLLET;
+	ev.data.fd =setting->tcp_socket;
+	epoll_ctl(epollfd, EPOLL_CTL_ADD, setting->tcp_socket, &ev);
+		
 	while(1)
 	{
-		FD_ZERO(&fds);
-		FD_SET(setting->tcp_socket, &fds);
-		state = select(setting->tcp_socket +1, &fds, NULL, NULL, NULL);
-		if(FD_ISSET(setting->tcp_socket, &fds)){
-			if(read(setting->tcp_socket, &val, sizeof(val)) <= 0){
-				_write("client close\n");
-				break;
-			}	
-		}
-	
+
 #if COMMU
 		if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
 			_write("recvfrom error\n");
@@ -122,6 +121,22 @@ void* do_echo(void* index){
 #endif
 		while( (sendto(s_socket, (void *)buffer, SIZE, 0, (struct sockaddr *)&c_addr, len)) <0 );
 
+		if(ret_poll = epoll_wait(epollfd, events, 1, -1) ==-1){
+			_write("wait error\n");
+		}
+		for(int k = 0; k<ret_poll; k++){
+			_write("ret!!!!!!!!!!!!!\n");
+			if((*events).events & EPOLLIN){
+				_write("epoll EPOLLIN!!\n");
+				if((*events).data.fd == setting->tcp_socket){
+					_write("epoll signal!\n");
+					if(read(setting->tcp_socket, &ack, sizeof(ack))<=0){
+						_write("client close\n");
+						break;
+					}
+				}
+			}	
+		}
 //		count++;
 //		if(count==100){
 //			if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
