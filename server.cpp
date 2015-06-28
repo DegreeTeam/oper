@@ -27,13 +27,21 @@ pthread_cond_t   thread_cond  = PTHREAD_COND_INITIALIZER;
 void *data_streaming(void *socket_desc);
 unsigned char* buffer;
 
+typedef struct _tcpStatus{
+	int socket;	
+	pthread thr_id;
+} tcpStatus;
+
 int port[PORTSIZE] = { 0, };
 int portP[PORTSIZE] = { 0, };
+tcpStatus* tcp_status[PORTSIZE] = {0,};
+
 char user_num = 0;
 void setPort(){
 	for (int i = 0; i < PORTSIZE; i++){
 		port[i] = 9001 + i;
 		portP[i] = 0;
+		tcp_socket[i] = 0;
 	}
 }
 int availablePort(){
@@ -47,68 +55,51 @@ int availablePort(){
 int _write(char* str){
 	write(STDOUT_FILENO, str, strlen(str));
 }
-typedef struct _UdpStatus{
-	int num;	
-	struct sockaddr_in addr;
-	int tcp_socket;
-} UdpStatus;
+
+void clean_up(void* s_socket){
+	int* addr = (int*) s_socket;
+	int socket = *addr;
+	close(socket);
+}
 void* do_echo(void* index){
 	int s_socket;
 	struct sockaddr_in s_addr, c_addr;	
-	UdpStatus* setting = (UdpStatus*) index;
+	int* param = (int*) index;
+	int INDEX = *param;
 	int len;
 	int ack;
-	c_addr = setting->addr;
 	s_socket = socket(PF_INET, SOCK_DGRAM, 0);
 	
 	memset(&s_addr, 0, sizeof(s_addr));
         s_addr.sin_addr.s_addr = inet_addr(SERVERADDR);
         s_addr.sin_family = AF_INET;
-        s_addr.sin_port = htons(port[setting->num]);
+        s_addr.sin_port = htons(port[INDEX]);
 	if(bind(s_socket, (struct sockaddr *) &s_addr, sizeof(s_addr)) == -1){
 		close(s_socket);
                 return 0; 
         }	
 	
-	struct timespec tv = {0,};
-	tv.tv_nsec = 1;
-//	if (setsockopt(s_socket, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
-//	    perror("Error");
-//	}
 	int snd_buf = SIZE*2;
 	if (setsockopt(s_socket, SOL_SOCKET, SO_RCVBUF,&snd_buf,sizeof(snd_buf)) < 0) {
 	    perror("Error");
 	}
-	c_addr = setting->addr;
 	len = sizeof(c_addr);
 	_write("before receive\n");
+	delete(param);
 #if !(COMMU)
 	if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
 		_write("recvfrom error\n");
-		portP[setting->num] = 0;
-		user_num--;
-		delete(setting);
-		close(setting->tcp_socket);
-		close(s_socket);
 		return 0;
 	}
 	_write("connected\n");
 #endif
+   	
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+	pthread_cleanup_push(clean_up, (void *)&s_socket);
 
-	fd_set fds;
-	int state, val;
 	while(1)
 	{
-		FD_ZERO(&fds);
-		FD_SET(setting->tcp_socket, &fds);
-		state = pselect(setting->tcp_socket +1, &fds, NULL, NULL, &tv, NULL);
-		if(FD_ISSET(setting->tcp_socket, &fds)){
-			if(read(setting->tcp_socket, &val, sizeof(val)) <= 0){
-				_write("client close\n");
-				break;
-			}	
-		}
-	
+
 #if COMMU
 		if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
 			_write("recvfrom error\n");
@@ -116,36 +107,35 @@ void* do_echo(void* index){
 		}	
 #endif
 #if LOCK
-//		pthread_mutex_lock(&mutex_lock);
 	        pthread_cond_wait(&thread_cond, &mutex_lock);
 #endif
 		while( (sendto(s_socket, (void *)buffer, SIZE, 0, (struct sockaddr *)&c_addr, len)) <0 );
-
-//		count++;
-//		if(count==100){
-//			if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
-//				_write("recvfrom error\n");
-//				break;
-//			}	
-//			count = 0;
-//		}
-#if LOCK
-//		pthread_mutex_unlock(&mutex_lock);
-#endif
-
 	}
-	portP[setting->num] = 0;
-	user_num--;
-	delete(setting);
-	close(setting->tcp_socket);
-	close(s_socket);
 	return 0;
+}
+
+void* checkConnetion(void* param){
+//	struct timespec tv = {0,};
+//	tv.tv_nsec = 1;
+//	fd_set fds;
+//	int state, val;
+//
+//	FD_ZERO(&fds);
+//	FD_SET(setting->tcp_socket, &fds);
+//	state = pselect(setting->tcp_socket +1, &fds, NULL, NULL, &tv, NULL);
+//	if(FD_ISSET(setting->tcp_socket, &fds)){
+//		if(read(setting->tcp_socket, &val, sizeof(val)) <= 0){
+//			_write("client close\n");
+//			break;
+//		}	
+//	}
+	
 }
 int main(){
 	int c_socket, s_socket;
 	struct sockaddr_in s_addr, c_addr;
 	int len;
-	pthread_t pthread1, pthread2;
+	pthread_t pthread1, pthread2, pthread3;
 	int thr_id;
 	int status;
 
@@ -182,6 +172,11 @@ int main(){
            perror("could not create thread");
             return 1;
         }
+	if(pthread_create(&pthread3 , NULL , checkConnetion , (void*) NULL) < 0)
+	{
+           perror("could not create thread");
+            return 1;
+        }
 
 	while(1){
 		int num;
@@ -194,13 +189,16 @@ int main(){
 			
 			user_num++;
 			fprintf(stderr, "user number = %d\n", user_num);
-			UdpStatus* setting = new UdpStatus;
 
-			setting->num = num;
-			setting->addr = c_addr;
-			setting->tcp_socket = c_socket;
-			thr_id = pthread_create(&pthread1, NULL, do_echo, (void*) setting);
+			int* index = new int;
+			*index = num;
+			thr_id = pthread_create(&pthread1, NULL, do_echo, (void*) index);
 			pthread_detach(pthread1);
+
+			tcpStatus* tcp = new tcpStatus;
+			tcp->socket = c_socket;
+			tcp->thr_id = pthread1;
+			tcp_status[num] = tcp;
 		}
 		else{
 			printf("There are no available port!\n");
