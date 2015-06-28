@@ -27,6 +27,13 @@ pthread_cond_t   thread_cond  = PTHREAD_COND_INITIALIZER;
 void *data_streaming(void *socket_desc);
 unsigned char* buffer;
 
+typedef struct _TcpStatus{
+	int socket;	
+	int udp_socket;
+	pthread_t thr_id;
+} TcpStatus;
+
+TcpStatus TCPCONN[PORTSIZE] = {0,};
 int port[PORTSIZE] = { 0, };
 int portP[PORTSIZE] = { 0, };
 char user_num = 0;
@@ -47,69 +54,64 @@ int availablePort(){
 int _write(char* str){
 	write(STDOUT_FILENO, str, strlen(str));
 }
-typedef struct _UdpStatus{
-	int num;	
-	struct sockaddr_in addr;
-	int tcp_socket;
-} UdpStatus;
+void clean_up(void* s_socket){
+	int* addr = (int*) s_socket;
+	int socket = *addr;
+	close(socket);
+}
+void sig_handler(int signo)
+{
+	fprintf(stderr, "after disconnect User_num = %d\n", user_num);
+	_write("remove do_echo get INT\n");
+	pthread_exit(NULL);
+}
 void* do_echo(void* index){
 	int s_socket;
 	struct sockaddr_in s_addr, c_addr;	
-	UdpStatus* setting = (UdpStatus*) index;
+	int* addr = (int*) index;
+	int INDEX = *addr;
+	
 	int len;
 	int ack;
-	c_addr = setting->addr;
 	s_socket = socket(PF_INET, SOCK_DGRAM, 0);
+
+	struct sigaction act;
+	sigset_t newmask;
+        sigemptyset(&newmask);
+        sigaddset(&newmask, SIGINT);
+        act.sa_handler = sig_handler;
+	sigaction(SIGINT, &act, NULL);
+	pthread_sigmask(SIG_UNBLOCK, &newmask, NULL);
 	
+	delete(addr);	
 	memset(&s_addr, 0, sizeof(s_addr));
         s_addr.sin_addr.s_addr = inet_addr(SERVERADDR);
         s_addr.sin_family = AF_INET;
-        s_addr.sin_port = htons(port[setting->num]);
+        s_addr.sin_port = htons(port[INDEX]);
 	if(bind(s_socket, (struct sockaddr *) &s_addr, sizeof(s_addr)) == -1){
+		_write("UDP bind error!\n");
 		close(s_socket);
                 return 0; 
         }	
-	
-	struct timespec tv = {0,};
-	tv.tv_nsec = 1;
-//	if (setsockopt(s_socket, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv)) < 0) {
-//	    perror("Error");
-//	}
+	TCPCONN[INDEX].udp_socket = s_socket;
 	int snd_buf = SIZE*2;
 	if (setsockopt(s_socket, SOL_SOCKET, SO_RCVBUF,&snd_buf,sizeof(snd_buf)) < 0) {
 	    perror("Error");
 	}
-	c_addr = setting->addr;
 	len = sizeof(c_addr);
 	_write("before receive\n");
+
 #if !(COMMU)
 	if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
 		_write("recvfrom error\n");
-		portP[setting->num] = 0;
-		user_num--;
-		delete(setting);
-		close(setting->tcp_socket);
 		close(s_socket);
 		return 0;
 	}
 	_write("connected\n");
 #endif
-
-	fd_set fds;
-	int state, val;
 	while(1)
 	{
-		FD_ZERO(&fds);
-		FD_SET(setting->tcp_socket, &fds);
-		state = pselect(setting->tcp_socket +1, &fds, NULL, NULL, &tv, NULL);
-		if(FD_ISSET(setting->tcp_socket, &fds)){
-			if(read(setting->tcp_socket, &val, sizeof(val)) <= 0){
-				_write("client close\n");
-				break;
-			}	
-		}
-	
-#if COMMU
+	#if COMMU
 		if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
 			_write("recvfrom error\n");
 			break;
@@ -120,34 +122,70 @@ void* do_echo(void* index){
 	        pthread_cond_wait(&thread_cond, &mutex_lock);
 #endif
 		while( (sendto(s_socket, (void *)buffer, SIZE, 0, (struct sockaddr *)&c_addr, len)) <0 );
+	}
+	close(s_socket);
+	return 0;
+}
 
-//		count++;
-//		if(count==100){
-//			if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
-//				_write("recvfrom error\n");
-//				break;
-//			}	
-//			count = 0;
-//		}
-#if LOCK
-//		pthread_mutex_unlock(&mutex_lock);
-#endif
+int getMaxfd(){
+
+	int max = 0;
+	for(int i=0;i<user_num;i++){
+		if(TCPCONN[i].socket > max){
+			max = TCPCONN[i].socket;
+		}
+	}
+	return max;
+}
+
+void* check_conn(void* param){
+	int maxfd;	
+	struct timeval timeout = {0,};
+	timeout.tv_sec = 1;
+	fd_set read_fds;
+	int ack;
+	while(1){
+		maxfd = getMaxfd() +1;
+		FD_ZERO(&read_fds);
+		for(int i=0;i<user_num;i++){
+			FD_SET(TCPCONN[i].socket, &read_fds);
+		}
+		if(select(maxfd, &read_fds, NULL, NULL, &timeout)<0){
+			_write("select error\n");
+			return 0;
+		}
+		for(int i=0;i<user_num;i++){
+			if(FD_ISSET(TCPCONN[i].socket, &read_fds)){
+				if(read(TCPCONN[i].socket, &ack, sizeof(ack))<=0 && TCPCONN[i].socket !=0){
+					pthread_mutex_lock(&mutex_lock);
+					_write("Check_conn --Close Connection\n");
+					pthread_kill(TCPCONN[i].thr_id, SIGINT);
+					user_num--;
+					portP[i] = 0;
+					close(TCPCONN[i].socket);
+					close(TCPCONN[i].udp_socket);
+					TCPCONN[i] = {0,};
+					pthread_mutex_unlock(&mutex_lock);
+				}
+			}
+		}
 
 	}
-	portP[setting->num] = 0;
-	user_num--;
-	delete(setting);
-	close(setting->tcp_socket);
-	close(s_socket);
+
 	return 0;
 }
 int main(){
 	int c_socket, s_socket;
 	struct sockaddr_in s_addr, c_addr;
 	int len;
-	pthread_t pthread1, pthread2;
+	pthread_t pthread1, pthread2, pthread3;
 	int thr_id;
 	int status;
+
+	sigset_t newmask;
+	sigemptyset(&newmask);
+	sigaddset(&newmask, SIGINT);
+	pthread_sigmask(SIG_BLOCK, &newmask,NULL);
 
 	setPort();	
 	s_socket = socket(PF_INET, SOCK_STREAM, 0); 
@@ -182,28 +220,40 @@ int main(){
            perror("could not create thread");
             return 1;
         }
-
+    	if(pthread_create(&pthread3 , NULL , check_conn , (void*) NULL) < 0)
+	{
+           perror("could not create thread");
+            return 1;
+        }
+	
+	fd_set read_fds;
 	while(1){
 		int num;
-		if ((num = availablePort()) != -1){
-			fprintf(stderr, "Port is available!\n");
-			portP[num] = 1;
-			len = sizeof(c_addr);
-			c_socket = accept(s_socket, (struct sockaddr *) &c_addr, (socklen_t*)&len);
+		len = sizeof(c_addr);
+		c_socket = accept(s_socket, (struct sockaddr *) &c_addr, (socklen_t*)&len);
+		
+		_write("client accept!\n");
+		num = availablePort();
+		if(num != -1){
 			write(c_socket, &port[num], sizeof(port[num]));
-			
+			int* addr = new int;
+			*addr = num;
+			thr_id = pthread_create(&pthread1, NULL, do_echo, (void*) addr);
+			pthread_detach(pthread1);
+
+
+			pthread_mutex_lock(&mutex_lock);
+			portP[num] = 1;
 			user_num++;
 			fprintf(stderr, "user number = %d\n", user_num);
-			UdpStatus* setting = new UdpStatus;
-
-			setting->num = num;
-			setting->addr = c_addr;
-			setting->tcp_socket = c_socket;
-			thr_id = pthread_create(&pthread1, NULL, do_echo, (void*) setting);
-			pthread_detach(pthread1);
+			TcpStatus tcp;
+			tcp.socket = c_socket;
+			tcp.thr_id = pthread1;
+			TCPCONN[num] = tcp;
+			pthread_mutex_unlock(&mutex_lock);
 		}
 		else{
-			printf("There are no available port!\n");
+			close(c_socket);
 		}
 	}
 	pthread_join(pthread2, (void **) status);
