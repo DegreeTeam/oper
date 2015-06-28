@@ -123,7 +123,7 @@ int getMaxfd(){
 void* check_conn(void* param){
 	int maxfd;	
 	struct timeval timeout = {0,};
-	timeout.tv_sec = 1;
+	timeout.tv_usec = 1;
 	fd_set read_fds;
 	int ack;
 	while(1){
@@ -134,7 +134,9 @@ void* check_conn(void* param){
 				FD_SET(TCPCONN[i].socket, &read_fds);
 			}
 		}
-		select(maxfd, &read_fds, NULL, NULL, NULL);
+		if(select(maxfd, &read_fds, NULL, NULL, &timeout)<=0){
+			continue;
+		}
 		for(int i=0;i<PORTSIZE;i++){
 			if(TCPCONN[i].socket >0){
 				if(FD_ISSET(TCPCONN[i].socket, &read_fds)){
