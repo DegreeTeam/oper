@@ -13,7 +13,7 @@
 #include <time.h>
 
 #define ALSA_PCM_NEW_HW_PARAMS_API
-#define SIZE 512
+#define SIZE 1024
 #define PORT 9000
 #define SERVERADDR "192.168.42.1"
 
@@ -55,19 +55,14 @@ int availablePort(){
 int _write(char* str){
 	write(STDOUT_FILENO, str, strlen(str));
 }
-void sig_handler(int signo)
-{
-	//fprintf(stderr, "after disconnect User_num = %d\n", user_num);
-	_write("remove do_echo get INT\n");
-	exit(0);
-}
 void* do_echo(void* index){
-	_write("Thread create!!!\n\n");
 	int s_socket;
 	struct sockaddr_in s_addr, c_addr;	
 	int* addr = (int*) index;
 	int INDEX = *addr;
 	TCPCONN[INDEX].flag = 1;
+	
+	fprintf(stderr, "\n\n do_echo: index = %d thread start\n\n", INDEX);
 	
 	int len;
 	int ack;
@@ -89,23 +84,30 @@ void* do_echo(void* index){
 	    perror("Error");
 	}
 	len = sizeof(c_addr);
-	_write("before receive\n");
 
 #if !(COMMU)
 	if((recvfrom(s_socket, (void *)&ack, sizeof(ack), 0, (struct sockaddr *)&c_addr, (socklen_t*)&len)) <0 ){
 		_write("recvfrom error\n");
-		close(s_socket);
 		return 0;
 	}
-	_write("connected\n");
 #endif
+	
+	fprintf(stderr, "\n\n do_echo: index = %d Connect!\n\n", INDEX);
 	while(TCPCONN[INDEX].flag)
 	{
 #if LOCK
 	        pthread_cond_wait(&thread_cond, &mutex_lock);
 #endif
+		if(!TCPCONN[INDEX].flag){
+			break;
+		}
 		while( (sendto(s_socket, (void *)buffer, SIZE, 0, (struct sockaddr *)&c_addr, len)) <0 );
 	}
+	fprintf(stderr, "\n\n do_echo: index = %d thread END\n\n", INDEX);
+	user_num--;
+	//portP[INDEX] = 0;
+	close(TCPCONN[INDEX].socket);
+
 	close(s_socket);
 	return 0;
 }
@@ -123,9 +125,9 @@ int getMaxfd(){
 void* check_conn(void* param){
 	int maxfd;	
 	struct timeval timeout = {0,};
-	timeout.tv_usec = 1;
+	timeout.tv_usec = 1000;
 	fd_set read_fds;
-	int ack;
+	char ack;
 	while(1){
 		maxfd = getMaxfd() +1;
 		FD_ZERO(&read_fds);
@@ -140,13 +142,9 @@ void* check_conn(void* param){
 		for(int i=0;i<PORTSIZE;i++){
 			if(TCPCONN[i].socket >0){
 				if(FD_ISSET(TCPCONN[i].socket, &read_fds)){
-					if(read(TCPCONN[i].socket, &ack, sizeof(ack))<=0){
-						_write("Check_conn --Close Connection\n");
-						user_num--;
-						portP[i] = 0;
-						close(TCPCONN[i].socket);
-						close(TCPCONN[i].udp_socket);
-						TCPCONN[i] = {0,};
+					if(read(TCPCONN[i].socket, &ack, sizeof(ack))==0){
+		//				fprintf(stderr, "\n\n check_conn: Index = %d, disconnect!\n\n", i);
+						TCPCONN[i].flag = 0;
 					}
 				}
 			}
@@ -196,20 +194,21 @@ int main(){
            perror("could not create thread");
             return 1;
         }
-    	if(pthread_create(&pthread3 , NULL , check_conn , (void*) NULL) < 0)
-	{
-           perror("could not create thread");
-            return 1;
-        }
-	
+//    	if(pthread_create(&pthread3 , NULL , check_conn , (void*) NULL) < 0)
+//	{
+//           perror("could not create thread");
+//            return 1;
+//        }
+//	
 	fd_set read_fds;
 	while(1){
 		int num;
 		num = availablePort();
 		
 		if(num != -1){
+	//		fprintf(stderr, "\n\n MAIN: index = %d accept...\n\n", num);	
+		
 			len = sizeof(c_addr);
-			_write("before accept\n");
 			c_socket = accept(s_socket, (struct sockaddr *) &c_addr, (socklen_t*)&len);
 			write(c_socket, &port[num], sizeof(port[num]));
 			
@@ -218,16 +217,12 @@ int main(){
 
 			thr_id = pthread_create(&pthread1, NULL, do_echo, (void*) addr);
 			pthread_detach(pthread1);
-			fprintf(stderr, "thread create~~id = %d\n", thr_id);
 
 			portP[num] = 1;
 			user_num++;
-			fprintf(stderr, "user number = %d\n", user_num);
-			TcpStatus tcp;
-			tcp.socket = c_socket;
-			tcp.thr_id = pthread1;
-			tcp.flag = 1;
-			TCPCONN[num] = tcp;
+			
+			TCPCONN[num].socket = c_socket;
+			TCPCONN[num].thr_id = pthread1;
 		}
 	}
 	pthread_join(pthread2, (void **) status);
